@@ -1,0 +1,174 @@
+---
+title: 'Week 2 Discussion: change in air pollution'
+author: Victor Sim (z5160036)
+output: pdf_document
+---
+
+
+# Question 1: What is the question?
+## 'Is there an improvement or reduction in average levels of PM2.5 particles?'
+
+# Question 2: What procedures have you done to import the data, check the data quality and tidy the data?
+
+```{r}
+library(dplyr)
+#import visualization packages
+library(ggplot2)
+library(reshape2)
+
+#import data and separate by '|' 
+Airpollution_1999 <- 
+  data.frame(read.table("C:/Users/user/Downloads/Airpollution_1999.txt", quote="\""))
+AP1999<-
+  data.frame(do.call('rbind',strsplit(as.character(Airpollution_1999$V1),'|',fixed=TRUE)))
+ 
+ Airpollution_2012<-
+   data.frame(read.table("C:/Users/user/Downloads/Airpollution_2012.txt", quote="\""))
+ AP2012<-
+   data.frame(do.call('rbind',strsplit(as.character(Airpollution_2012$V1),'|',fixed=TRUE)))
+ 
+#Label the column titles 
+colnames(AP1999)<-c("RD","ActionCode","StateCode","CountyCode","SiteID","Parameter","POC",
+                    "SampleDuration","Unit","Method","Date","StartTime","SampleValue",
+                    "NullDataCode","SamplingFreq","MP_ID",
+                    "Q1","Q2","Q3","Q4","Q5","Q6","Q7","Q8","Q9","Q10","Uncertainty")
+
+colnames(AP2012)<-c("RD","ActionCode","StateCode","CountyCode","SiteID","Parameter","POC",
+                    "SampleDuration","Unit","Method","Date","StartTime","SampleValue",
+                    "NullDataCode","SamplingFreq","MP_ID",
+                    "Q1","Q2","Q3","Q4","Q5","Q6","Q7","Q8","Q9","Q10","Uncertainty")
+
+```
+
+# Question 3: Have you found any data problems e.g. missing data, etc. and how do you deal with it?
+In the tables, the data presents missing items in most of the qualifiers that define the pollutant and the format of each column or factor needs to be changed to remain representiative of what the data is presenting e.g. date type for start date.To summarize the cleaning process, there exist missing values which are indicated in NullDataCode. However, its contribution is minimal as shown below so I choose to replace it with a zero value to preserve the sample size for smoother visualization.
+
+```{r}
+
+#Format date
+AP1999$Date<-as.Date(AP1999$Date,"%Y%m%d")
+AP2012$Date<-as.Date(AP2012$Date,"%Y%m%d")
+
+#Format doubles and integers
+AP1999$SampleDuration<-as.integer(AP1999$SampleDuration)
+AP1999$SamplingFreq<-as.integer(AP1999$SamplingFreq)
+AP1999$SampleValue<-as.double(AP1999$SampleValue)
+
+AP2012$SampleDuration<-as.integer(AP2012$SampleDuration)
+AP2012$SamplingFreq<-as.integer(AP2012$SamplingFreq)
+AP2012$SampleValue<-as.double(AP2012$SampleValue)
+
+#Statistical Summary
+summary(AP1999$SampleValue)
+summary(AP2012$SampleValue)
+
+#13217/length(AP1999$SampleValue)~11.26% and 73133/length(AP2012$SampleValue)~5.61%
+
+#Treat NA by replacing it by zero
+AP1999$SampleValue[is.na(AP1999$SampleValue)]<-0
+AP2012$SampleValue[is.na(AP2012$SampleValue)]<-0
+
+```
+
+# Question 4: What is your answer to your question? and how do you reach that answer?
+
+```{r}
+
+#Sample size of each dataset are different due to the higher number of start times for sampling  
+dim(AP1999)
+dim(AP2012)
+
+```
+
+Just by simple aggregation over the calendar year, it seems the air pollution has exacerbated. However, further examination of the data shows that there are more start times for sampling in 2012 than in 1999 hence overall increased number of sample size. Hence segementation is required to compare and I will be comparing the sample values by start times in a day, dates, sampling frequency and state.
+
+```{r}
+
+#Group by start time with average
+ST1999<-aggregate(AP1999$SampleValue,by=list(TimeOfDay=AP1999$StartTime),FUN=mean)
+ST2012<-aggregate(AP2012$SampleValue,by=list(TimeOfDay=AP2012$StartTime),FUN=mean)
+
+#with median
+ST1999_med<-aggregate(AP1999$SampleValue,by=list(TimeOfDay=AP1999$StartTime),FUN=median)
+ST2012_med<-aggregate(AP2012$SampleValue,by=list(TimeOfDay=AP2012$StartTime),FUN=median)
+
+#Convert to long format
+ST_combine<-merge(ST1999,ST2012, by="TimeOfDay") %>%
+        melt(id.vars="TimeOfDay")
+ST_combine$variable<-ifelse(ST_combine$variable=="x.x","1999","2012")
+
+#for median too
+ST_med<-merge(ST1999_med,ST2012_med, by="TimeOfDay") %>%
+        melt(id.vars="TimeOfDay")
+ST_med$variable<-ifelse(ST_med$variable=="x.x","1999","2012")
+
+#Compare
+ggplot(ST_combine,aes(TimeOfDay,value,fill=variable))+
+  geom_bar(stat="identity",position = "dodge")+
+        ggtitle("Air Pollution Sample Value by Mean")
+ggplot(ST_med,aes(TimeOfDay,value,fill=variable))+
+  geom_bar(stat="identity",position = "dodge")+
+        ggtitle("Air Pollution Sample Value by Median")
+
+
+##Since mean and median shows similar outcome, 
+##I will use median as the measure for comparison
+
+#By month
+Dt1999<-aggregate(AP1999$SampleValue,by=list(month=months(AP1999$Date)),median)
+Dt2012<-aggregate(AP2012$SampleValue,by=list(month=months(AP2012$Date)),median)
+
+Dt_combine<-merge(Dt1999,Dt2012, by="month") %>%
+        melt(id.vars="month")
+Dt_combine$variable<-ifelse(Dt_combine$variable=="x.x","1999","2012")
+
+ggplot(Dt_combine,aes(month,value,fill=variable))+
+  geom_bar(stat="identity",position="dodge")+
+  ggtitle("Monthly Comparison of Sample Value")
+
+#By sampling frequency
+SF1999<-aggregate(AP1999$SampleValue,by=list(Freq=AP1999$SamplingFreq),median)
+SF2012<-aggregate(AP2012$SampleValue,by=list(Freq=AP2012$SamplingFreq),median)
+
+SF_combine<-merge(SF1999,SF2012, by="Freq") %>%
+        melt(id.vars="Freq")
+
+SF_combine$variable<-ifelse(SF_combine$variable=="x.x","1999","2012")
+
+ggplot(SF_combine,aes(Freq,value,fill=variable))+
+  geom_bar(stat="identity",position="dodge")+
+  ggtitle("Sample Value comparison by Sampling Frequency")
+
+#By state
+State1999<-aggregate(AP1999$SampleValue,by=list(StateCode=AP1999$StateCode),mean)
+State2012<-aggregate(AP2012$SampleValue,by=list(StateCode=AP2012$StateCode),mean)
+
+State_combine<-merge(State1999,State2012, by="StateCode") %>%
+        melt(id.vars="StateCode")
+State_combine$variable<-ifelse(State_combine$variable=="x.x","1999","2012")
+
+ggplot(State_combine,aes(StateCode,value,fill=variable))+
+  geom_bar(stat="identity",position="dodge",width=0.6)+
+  ggtitle("Comparison of Sample Value by state")+theme(text=element_text(size = 10))
+
+```
+By samples at different times of day, the sample value has shown a decrease overall by the mean and median 
+i.e. the effects of outliers are minimal in overall trend by start time.
+From further data exploration and visualization in the different dates throughout the calendar year, sampling frequencies and states, it is clear that air pollution has improved by reduced amounts of PM2.5 particles in samples values.
+
+# Question 5: Are there any follow-up questions you could ask and explore using exploratory data analysis based on the datasets?
+*Possible questions:*  
+
+1. What are the geographic or demographic factors material to the contribution of PM2.5 particles?  
+**Justification:** The characteristics of the geographical environment has a strong influence on the levels of air pollution including levels of human activities e.g. population density, level of industrialization in the area, vehicle owned per area, etc. and meteorological factors e.g. wind velocity, rainfall, air temperature, soil temperature, relative air humidity, etc. 
+[link](https://iopscience.iop.org/article/10.1088/1755-1315/108/4/042047/pdf#:~:text=Of%20course%2C%20meteorological%20factors%2C%20such,5%20concentration.)
+
+2. Are there other particles that are determinant of air pollution?  
+**Justification:** PM2.5 is only one representative of air pollutants i.e. particles matter of 2.5 micrometer or less in diameter. Another common one, PM10 i.e. diameter of 10 micrometer or less is equally detriment to our respiratory system. 
+[link](https://www.health.nsw.gov.au/environment/air/Pages/particulate-matter.aspx)  
+
+3. What are the drivers of improving air pollution?  
+**Justification:** Within the dataset, there are no explanatory factors that are directly attributed to the reduction in sample values of PM2.5. Of the variables explores, it only shows that the progress of time has implied possibly the technological advancement in environmental sustainability and waste management, or even changes in government policies on climate change trickling to actions taken by more environmentally friendly business operations. More research and data collection is required.
+
+
+
